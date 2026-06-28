@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vehicle Detection - Edge AI</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Load ONNX Runtime Web from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Vehicle Scanner</h1>
+            <div id="status" class="status-badge loading">Loading AI Model...</div>
+        </header>
+
+        <main>
+            <div class="camera-container">
+                <!-- Video element to capture camera stream -->
+                <video id="webcam" autoplay playsinline muted></video>
+                <!-- Canvas to draw bounding boxes overlay -->
+                <canvas id="overlay"></canvas>
+            </div>
+            
+            <div class="controls">
+                <button id="startBtn" class="btn primary" disabled>Start Camera</button>
+                <div class="settings">
+                    <label for="api-key">API Key:</label>
+                    <input type="password" id="api-key" placeholder="Enter API Key to send data">
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- The App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
