@@ -9,7 +9,8 @@ let session;
 let isDetecting = false;
 let lastPostTime = 0;
 const POST_INTERVAL_MS = 3000; // Giới hạn gửi dữ liệu 3 giây 1 lần để tránh sập server
-const CONFIDENCE_THRESHOLD = 0.5; // Ngưỡng tự tin (50%)
+const CONFIDENCE_THRESHOLD = 0.75; // Đã nâng lên 75% để AI khó tính hơn, tránh nhận diện bậy
+const IOU_THRESHOLD = 0.45; // Ngưỡng lọc hộp chồng lấn
 const API_URL = "https://vehicle-api-v2p0.onrender.com/api/v1/vehicles"; 
 
 // Khởi tạo mô hình ONNX
@@ -102,11 +103,9 @@ async function detectFrame() {
 // Xử lý kết quả và vẽ lên màn hình
 function processAndDraw(output, imgW, imgH) {
     ctx.clearRect(0, 0, canvas.width, canvas.height); // Xóa khung cũ
-    let detected = false;
-    let maxConf = 0;
-    let bestClass = 1;
+    let boxes = [];
     
-    // YOLOv8 sinh ra 8400 hộp dự đoán. Ta duyệt để tìm hộp có độ chính xác cao nhất.
+    // YOLOv8 sinh ra 8400 hộp dự đoán. Ta duyệt để tìm hộp.
     for (let i = 0; i < 8400; i++) {
         let maxClassConf = 0;
         let classId = -1;
@@ -119,14 +118,8 @@ function processAndDraw(output, imgW, imgH) {
             }
         }
         
-        // Nếu AI tin tưởng đây là xe (trên 50%)
+        // Nếu AI tin tưởng (trên Ngưỡng)
         if (maxClassConf > CONFIDENCE_THRESHOLD) {
-            detected = true;
-            if (maxClassConf > maxConf) {
-                maxConf = maxClassConf;
-                bestClass = classId; // Loại xe
-            }
-            
             // Lấy tọa độ (Tâm X, Tâm Y, Rộng, Dài)
             const xc = output[0 * 8400 + i];
             const yc = output[1 * 8400 + i];
@@ -139,22 +132,56 @@ function processAndDraw(output, imgW, imgH) {
             const boxW = w * (imgW / 640);
             const boxH = h * (imgH / 640);
             
-            // Vẽ hộp xanh lá cây bao quanh xe
-            ctx.strokeStyle = '#00ff00';
-            ctx.lineWidth = 4;
-            ctx.strokeRect(x1, y1, boxW, boxH);
-            
-            // Hiển thị text độ chính xác
-            ctx.fillStyle = '#00ff00';
-            ctx.font = 'bold 18px Arial';
-            ctx.fillText(`Xe cộ: ${Math.round(maxClassConf * 100)}%`, x1, y1 > 20 ? y1 - 10 : y1 + 20);
+            boxes.push({x: x1, y: y1, w: boxW, h: boxH, conf: maxClassConf, classId: classId});
         }
+    }
+    
+    // Thuật toán NMS (Non-Maximum Suppression) để loại bỏ các hộp bị trùng nhau
+    boxes.sort((a, b) => b.conf - a.conf);
+    let finalBoxes = [];
+    while (boxes.length > 0) {
+        let current = boxes.shift();
+        finalBoxes.push(current);
+        boxes = boxes.filter(b => iou(current, b) < IOU_THRESHOLD);
+    }
+    
+    let detected = false;
+    let maxConf = 0;
+    let bestClass = 1;
+    
+    for (let box of finalBoxes) {
+        detected = true;
+        if (box.conf > maxConf) {
+            maxConf = box.conf;
+            bestClass = box.classId;
+        }
+        
+        // Vẽ hộp xanh lá cây bao quanh xe
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(box.x, box.y, box.w, box.h);
+        
+        // Hiển thị text độ chính xác
+        ctx.fillStyle = '#00ff00';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText(`Xe cộ: ${Math.round(box.conf * 100)}%`, box.x, box.y > 20 ? box.y - 10 : box.y + 20);
     }
     
     // Nếu có xe, bắn Data lên Server
     if (detected) {
         sendDataToCloud(bestClass, maxConf);
     }
+}
+
+// Hàm tính tỉ lệ chồng lấn (Intersection over Union)
+function iou(box1, box2) {
+    const x1 = Math.max(box1.x, box2.x);
+    const y1 = Math.max(box1.y, box2.y);
+    const x2 = Math.min(box1.x + box1.w, box2.x + box2.w);
+    const y2 = Math.min(box1.y + box1.h, box2.y + box2.h);
+    const intersect = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    const union = box1.w * box1.h + box2.w * box2.h - intersect;
+    return intersect / union;
 }
 
 // Bắn Data lên Server Render (Zero-Cost)
