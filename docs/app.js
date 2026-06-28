@@ -9,7 +9,7 @@ let session;
 let isDetecting = false;
 let lastPostTime = 0;
 const POST_INTERVAL_MS = 3000; // Giới hạn gửi dữ liệu 3 giây 1 lần để tránh sập server
-const CONFIDENCE_THRESHOLD = 0.75; // Đã nâng lên 75% để AI khó tính hơn, tránh nhận diện bậy
+const CONFIDENCE_THRESHOLD = 0.5; // Hạ xuống 50% để hiển thị các mức màu Đỏ/Cam/Xanh
 const IOU_THRESHOLD = 0.45; // Ngưỡng lọc hộp chồng lấn
 const API_URL = "https://vehicle-api-v2p0.onrender.com/api/v1/vehicles"; 
 
@@ -156,13 +156,21 @@ function processAndDraw(output, imgW, imgH) {
             bestClass = box.classId;
         }
         
-        // Vẽ hộp xanh lá cây bao quanh xe
-        ctx.strokeStyle = '#00ff00';
+        // Đổi màu dựa trên độ chính xác
+        let color = '#f44336'; // Màu Đỏ (Tự tin thấp: 50% - 69%)
+        if (box.conf >= 0.85) {
+            color = '#4caf50'; // Màu Xanh lá (Rất tự tin: >= 85%)
+        } else if (box.conf >= 0.70) {
+            color = '#ff9800'; // Màu Cam (Tự tin vừa: 70% - 84%)
+        }
+        
+        // Vẽ hộp bao quanh xe
+        ctx.strokeStyle = color;
         ctx.lineWidth = 4;
         ctx.strokeRect(box.x, box.y, box.w, box.h);
         
         // Hiển thị text độ chính xác
-        ctx.fillStyle = '#00ff00';
+        ctx.fillStyle = color;
         ctx.font = 'bold 18px Arial';
         ctx.fillText(`Xe cộ: ${Math.round(box.conf * 100)}%`, box.x, box.y > 20 ? box.y - 10 : box.y + 20);
     }
